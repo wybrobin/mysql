@@ -38,8 +38,9 @@ func (tx *mysqlTx) Commit() (err error) {
 	}
 
 	if tx.mc.ctx != nil {
+		//向TC发送 BranchRegister 请求，请求将 tx.mc.ctx.lockKeys 里面的数据锁在 tx.mc.ctx.xid 下面，如果成功则返回 branchID
 		branchID, err := tx.register()
-		if err != nil {
+		if err != nil {	//如果无法锁住 tx.mc.ctx.lockKeys 到 tx.mc.ctx.xid 下面，则回滚
 			rollBackErr := tx.mc.exec("ROLLBACK")
 			if rollBackErr != nil {
 				log.Error(rollBackErr)
@@ -104,6 +105,7 @@ func (tx *mysqlTx) register() (int64, error) {
 	var branchID int64
 	var err error
 	for retryCount := 0; retryCount < config.GetATConfig().LockRetryTimes; retryCount++ {
+		//向TC发送 BranchRegister 请求，请求将 tx.mc.ctx.lockKeys 里面的数据锁在 tx.mc.ctx.xid 下面，如果成功则返回 branchID
 		branchID, err = rm.GetResourceManager().BranchRegister(context.Background(),
 			tx.mc.ctx.xid, tx.mc.cfg.DBName, apis.AT, nil,
 			strings.Join(tx.mc.ctx.lockKeys, ";"))
@@ -122,6 +124,8 @@ func (tx *mysqlTx) register() (int64, error) {
 	return branchID, err
 }
 
+//这里所有调用这个函数的地方 commitDone 都传false
+//向TC发送消息 BranchReport
 func (tx *mysqlTx) report(commitDone bool) error {
 	retry := config.GetATConfig().LockRetryTimes
 	for retry > 0 {

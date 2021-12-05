@@ -61,6 +61,7 @@ func (resourceManager DataSourceManager) GetConnection(resourceID string) *mysql
 	return conn
 }
 
+//收到tc通过pb协议 BranchCommunicate 的BranchCommit请求后，删undo_log表的对应数据
 func (resourceManager DataSourceManager) BranchCommit(ctx context.Context, request *apis.BranchCommitRequest) (*apis.BranchCommitResponse, error) {
 	db := resourceManager.ResourceCache[request.ResourceID]
 	if db == nil {

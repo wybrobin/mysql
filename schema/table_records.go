@@ -18,6 +18,7 @@ func NewTableRecords(meta TableMeta) *TableRecords {
 	}
 }
 
+//从 TableRecords 根据 TableMeta 数据拿到表的主键信息和值
 func (records *TableRecords) PKFields() []*Field {
 	pkRows := make([]*Field, 0)
 	pk := records.TableMeta.GetPKName()

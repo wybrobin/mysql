@@ -102,6 +102,9 @@ func (executor *updateExecutor) GetTableName() string {
 
 func (executor *updateExecutor) GetWhereCondition() string {
 	var sb strings.Builder
+	//调用的是：
+	//github.com\pingcap\parser@v0.0.0-20200424075042-8222d8b724a4\ast\dml.go
+	//func (n *UpdateStmt) Restore(ctx *format.RestoreCtx) error
 	executor.stmt.Where.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
 	return sb.String()
 }
@@ -341,6 +344,7 @@ func (executor *selectForUpdateExecutor) Execute(lockRetryInterval time.Duration
 			var lockable bool
 			var err error
 			for i := 0; i < lockRetryTimes; i++ {
+				//向TC发送请求，LockQuery，将查询到的行的主键值组成的字符串发给TC，让TC在 lock_table 表里锁住
 				lockable, err = rm.GetResourceManager().LockQuery(context.Background(),
 					executor.mc.ctx.xid, executor.mc.cfg.DBName, apis.AT, lockKeys)
 				if lockable && err == nil {
@@ -442,6 +446,7 @@ func (executor *updateExecutor) buildAfterImageSql(tableMeta schema.TableMeta, b
 	return b.String()
 }
 
+//查询当前数据库中的值
 func (executor *updateExecutor) buildTableRecords(tableMeta schema.TableMeta) (*schema.TableRecords, error) {
 	sql := executor.buildBeforeImageSql(tableMeta)
 	argsCount := strings.Count(sql, "?")
@@ -579,6 +584,8 @@ func appendInParam(size int) string {
 	return sb.String()
 }
 
+//将一条 schema.TableRecords 行记录，从记录的 TableMeta 里知道这条记录的哪些字段是主键，并拿到值，然后组成一个字符串，格式为：
+//{TableName}:pk1,pk2,pk3,...
 func buildLockKey(lockKeyRecords *schema.TableRecords) string {
 	if lockKeyRecords == nil || lockKeyRecords.Rows == nil || len(lockKeyRecords.Rows) == 0 {
 		return ""
@@ -608,6 +615,7 @@ func buildUndoItem(sqlType SQLType, tableName string, beforeImage, afterImage *s
 	return sqlUndoLog
 }
 
+//获取查询出来的值，组成一个多行数值的镜像。生成了一个记录了每一列（也就是每个字段）的值得镜像
 func buildRecords(meta schema.TableMeta, rows driver.Rows) *schema.TableRecords {
 	resultSet := rows.(*binaryRows)
 	records := schema.NewTableRecords(meta)

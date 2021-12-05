@@ -32,7 +32,7 @@ type connCtx struct {
 	xid                string
 	branchID           int64
 	lockKeys           []string
-	sqlUndoItemsBuffer []*sqlUndoLog
+	sqlUndoItemsBuffer []*sqlUndoLog	//记录了insert、update、delete的BeforeImage和AfterImage
 }
 
 type mysqlConn struct {
@@ -336,6 +336,7 @@ func (mc *mysqlConn) Exec(query string, args []driver.Value) (driver.Result, err
 			return nil, driver.ErrSkip
 		}
 		// try to interpolate the parameters to save extra roundtrips for preparing and closing a statement
+		//参数绑定，组成一个新的sql语句，这里就直接执行了，不用先prepare，再bind，再exec了
 		prepared, err := mc.interpolateParams(query, args)
 		if err != nil {
 			return nil, err
@@ -355,6 +356,7 @@ func (mc *mysqlConn) Exec(query string, args []driver.Value) (driver.Result, err
 	return nil, mc.markBadConn(err)
 }
 
+//执行语句，但是没有commit
 func (mc *mysqlConn) execAlways(query string, args []driver.Value) (driver.Result, error) {
 	stmt, err := mc.Prepare(query)
 	if err != nil {
@@ -652,6 +654,7 @@ func (mc *mysqlConn) ExecContext(ctx context.Context, query string, args []drive
 	}
 
 	if globalLock {
+		//先检查是否能执行，也就是向tc要锁住这个命令
 		executable, err := executable(mc, query, dargs)
 		if err != nil {
 			return nil, err

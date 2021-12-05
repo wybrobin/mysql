@@ -45,6 +45,7 @@ func GetUndoLogManager() MysqlUndoLogManager {
 	return MysqlUndoLogManager{}
 }
 
+//将内存中的 conn.ctx.sqlUndoItemsBuffer 写到undo_log表中
 func (manager MysqlUndoLogManager) FlushUndoLogs(conn *mysqlConn) error {
 	defer func() {
 		if err := recover(); err != nil {
@@ -67,6 +68,7 @@ func (manager MysqlUndoLogManager) FlushUndoLogs(conn *mysqlConn) error {
 	return manager.insertUndoLogWithNormal(conn, xid, branchID, buildContext(parser.GetName()), undoLogContent)
 }
 
+//从 undo_log 表里取出对应的回滚记录，然后执行回滚操作
 func (manager MysqlUndoLogManager) Undo(conn *mysqlConn, xid string, branchID int64, resourceID string) error {
 	tx, err := conn.Begin()
 	if err != nil {
@@ -118,6 +120,7 @@ func (manager MysqlUndoLogManager) Undo(conn *mysqlConn, xid string, branchID in
 	}
 	rows.Close()
 
+	//执行branch对应的undo_log的回滚内容
 	for _, branchUndoLog := range undoLogs {
 		sqlUndoLogs := branchUndoLog.SqlUndoLogs
 		for _, sqlUndoLog := range sqlUndoLogs {
@@ -128,6 +131,7 @@ func (manager MysqlUndoLogManager) Undo(conn *mysqlConn, xid string, branchID in
 			}
 
 			sqlUndoLog.SetTableMeta(tableMeta)
+			//执行回滚
 			err1 := NewMysqlUndoExecutor(*sqlUndoLog).Execute(conn)
 			if err1 != nil {
 				tx.Rollback()
@@ -136,6 +140,7 @@ func (manager MysqlUndoLogManager) Undo(conn *mysqlConn, xid string, branchID in
 		}
 	}
 
+	//如果存在回滚操作，就删除undo_log对应的记录
 	if exists {
 		_, err := conn.execAlways(DeleteUndoLogSql, args)
 		if err != nil {
@@ -145,7 +150,7 @@ func (manager MysqlUndoLogManager) Undo(conn *mysqlConn, xid string, branchID in
 		log.Infof("xid %s branch %d, undo_log deleted with %s\n", xid, branchID,
 			GlobalFinished.String())
 		tx.Commit()
-	} else {
+	} else {//如果没有undo_log回滚，还要插入一条？？？这是为啥
 		manager.insertUndoLogWithGlobalFinished(conn, xid, branchID,
 			buildContext(GetUndoLogParser().GetName()), GetUndoLogParser().GetDefaultContent())
 		tx.Commit()
@@ -204,16 +209,19 @@ func toBatchDeleteUndoLogSql(xidSize int, branchIDSize int) string {
 	return sb.String()
 }
 
+//插入 undo_log 表，log_status 字段为0，undoLogContent 是 rollback_info字段
 func (manager MysqlUndoLogManager) insertUndoLogWithNormal(conn *mysqlConn, xid string, branchID int64,
 	rollbackCtx string, undoLogContent []byte) error {
 	return manager.insertUndoLog(conn, xid, branchID, rollbackCtx, undoLogContent, Normal)
 }
 
+//插入 undo_log 表，log_status 字段为1
 func (manager MysqlUndoLogManager) insertUndoLogWithGlobalFinished(conn *mysqlConn, xid string, branchID int64,
 	rollbackCtx string, undoLogContent []byte) error {
 	return manager.insertUndoLog(conn, xid, branchID, rollbackCtx, undoLogContent, GlobalFinished)
 }
 
+//插入undo_log表
 func (manager MysqlUndoLogManager) insertUndoLog(conn *mysqlConn, xid string, branchID int64,
 	rollbackCtx string, undoLogContent []byte, state State) error {
 	args := []driver.Value{branchID, xid, rollbackCtx, undoLogContent, state}
